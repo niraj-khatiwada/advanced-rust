@@ -1,35 +1,38 @@
-use once_cell::sync::Lazy;
-use std::sync::{Mutex, RwLock};
+use rayon::prelude::*;
+use std::{
+    thread::{self, JoinHandle},
+    time::{self, Duration},
+};
 
-static shared_data: Mutex<u32> = Mutex::new(0);
+/// Run the below code in release mode to see the actual benchmark. cargo run --release
 fn main() {
-    // // DeadLock
-    // let lock = shared_data.lock().unwrap();
-    // let lock = shared_data.lock().unwrap(); // -> We tried to lock the mutex when the previous lock was not released.
+    let mut handlers: Vec<JoinHandle<()>> = Vec::new();
 
-    // Solution
-    // {
-    //     let lock = shared_data.lock().unwrap();
-    //     // A mutex lock is unlocked when it reaches to the end of scopes
-    // }
-    // let lock = shared_data.lock().unwrap();
+    handlers.push(thread::spawn(|| {
+        let now = time::Instant::now();
+        let numbers: Vec<u64> = (0..=1_000_000_000).collect();
 
-    // Same goes for read-write locks as well.
-    // let lazy_shared_data: Lazy<RwLock<u32>> = Lazy::new(|| RwLock::new(0));
-    // let read_lock = lazy_shared_data.read().unwrap();
-    // let write_lock = lazy_shared_data.write().unwrap();
+        let sum = numbers.par_iter().sum::<u64>();
+        println!("Sum = {}", sum);
 
-    // let lazy_shared_data: Lazy<RwLock<u32>> = Lazy::new(|| RwLock::new(0));
-    // {
-    //     let read_lock = lazy_shared_data.read().unwrap();
-    // }
-    // let write_lock = lazy_shared_data.write().unwrap();
+        println!("Time taken to find sum {:?}", now.elapsed()); // -> This takes ~1 second 🤯. JavaScript takes 6-7 seconds.
+    }));
 
-    // User try_lock instead. But this will not wait for another lock to be released.
-    let lock = shared_data.lock().unwrap();
-    if shared_data.try_lock().is_ok() {
-        println!("Lock acquired.");
-    } else {
-        println!("Cannot acquire lock.");
-    }
+    // Only run  one at a time for actual benchmark
+    // When you run both the tasks, if a par_iter() is already being used, then I guess rayon has to wait for that to be released so that it can lock the thread again. That's why running both of these here will make the benchmarking slow. You're supposed to do par_iter() one at a time since thread can only be locked one at a time.
+    // handlers.push(thread::spawn(|| {
+    //     let now = time::Instant::now();
+    //     let num_of_primes: Vec<u32> = (0..=1_000_000)
+    //         .into_par_iter()
+    //         .filter(|num| is_prime(*num))
+    //         .collect();
+    //     println!("Found {:?} prime numbers", num_of_primes.len());
+    //     println!("Time taken {:?}", now.elapsed());
+    // }));
+
+    handlers.into_par_iter().for_each(|h| h.join().unwrap());
+}
+
+fn is_prime(n: u32) -> bool {
+    (2..n).into_par_iter().all(|val| n % val != 0)
 }
