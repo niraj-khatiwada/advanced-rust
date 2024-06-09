@@ -1,3 +1,4 @@
+// anyhow trait works like this
 type GenericResult<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() {
